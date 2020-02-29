@@ -6,6 +6,20 @@ All commands are execeuted as root.
 
 ## Prerequisites
 
+First install some dependencies needed during installation and in every day use situations.
+
+```
+dnf install -y epel-release yum-utils unzip curl wget bash-completion policycoreutils-python-utils mlocate bzip2
+dnf update -y
+```
+
+Resolve dependency fail, this is only needed if the command `dnf list` shows "Modular dependency problems" with perl.
+
+```
+dnf install -y perl
+yum module enable perl:5.26
+```
+
 ### Nginx Web Server
 Install and start the server.
 
@@ -58,10 +72,15 @@ MariaDB is a free and backward compatible replacement of MySQL.
 dnf install -y mariadb-server mariadb
 ```
 
-Set the data directory for the MariaDB system tables and future nextcloud database.
+Set the data directory for the MariaDB system tables and future nextcloud database in `/etc/my.cnf.d/mariadb-server.cnf`
+
+Then label the new data dir as suitable for MariaDB data files for SELinux.
 
 ```
-mysql_install_db --user=mysql --datadir=/media/cloudstorage/clouddb
+ls -alZ /media/cloudstorage/cloudb
+semanage fcontext -a -t mysqld_db_t "/media/cloudstorage/clouddb(/.*)?"
+restorecon -R -v /media/cloudstorage/clouddb
+ls -alZ /media/cloudstorage/clouddb
 ```
 
 Start the service, run the security script and test login to MariaDB shell.
@@ -172,6 +191,7 @@ server {
     server_name nextcloud.your-domain.com;
 
     # Add headers to serve security related headers
+    add_header Strict-Transport-Security "max-age=15768000; includeSubDomains;" always;
     add_header X-Content-Type-Options nosniff;
     add_header X-XSS-Protection "1; mode=block";
     add_header X-Robots-Tag none;
@@ -258,9 +278,10 @@ server {
     # Make sure it is BELOW the PHP block
     location ~* \.(?:css|js)$ {
         try_files $uri /index.php$uri$is_args$args;
-        add_header Cache-Control "public, max-age=7200";
+        add_header Cache-Control "public, max-age=15778463";
         # Add headers to serve security related headers (It is intended to
         # have those duplicated to the ones above)
+        add_header Strict-Transport-Security "max-age=15768000; includeSubDomains;" always;
         add_header X-Content-Type-Options nosniff;
         add_header X-XSS-Protection "1; mode=block";
         add_header X-Robots-Tag none;
@@ -278,8 +299,143 @@ server {
 }
 ```
 
+Then test the nginx configuration.
+
+```
+nginx -t
+```
+
+And if successful, reload nginx.
+
+## Install and Enable PHP Modules
+
+Install PHP modules and build imagick.
+
+```
+dnf install -y php-common php-json php-curl php-zip php-bz2 php-intl php-pecl-apcu php-pear gcc curl-devel php-devel zlib-devel pcre-devel make
+yum config-manager --set-enabled PowerTools
+dnf install -y ImageMagick ImageMagick-devel
+pecl install imagick
+```
+
+Load the extension in the php.ini file with
+
+```
+extension=imagick.so
+```
+
+Tell SELinux to allow PHP-FPM to use execmem.
+
+```
+setsebool -P httpd_execmem 1
+```
+
+The option `-P` means that the setting should be permanent.
+
+Reload PHP-FPM.
+
+## Setting up Permissions
+
+Tell SELinux to allow nginx and PHP-FPM to read and write to the nextcloud webroot tree.
+
+```
+chcon -t httpd_sys_rw_content_t /usr/share/nginx/nextcloud -R
+```
+
+Tell SELinux to allow nginx to make network requests to other server. This is needed to request TLS certificate status from Let's Encrypt CA server.
+
+```
+setsebool -P httpd_can_network_connect 1
+```
+
+Give the nginx user permissions to read and write to the following 3 directories with `setfacl`.
+
+```
+setfacl -R -m u:nginx:rwx /var/lib/php/opcache/
+setfacl -R -m u:nginx:rwx /var/lib/php/session/
+setfacl -R -m u:nginx:rwx /var/lib/php/wsdlcache/
+```
+
+Don't change the owner of these files for possible future use of apache web server.
+
+## Enable https
+
+To request a certificate from Let's Encrypt and install it to the nginx configuration use certbot and its nginx plugin
+
+```
+dnf install -y certbot python3-certbot
+pip3 install certbot-nginx
+certbot --nginx
+```
+
+Go through the script and restart nginx.
+
+## NextCloud Install Wizard
+
+Now the install wizard is accessible using https.
+
+Because it is unsafe to store NextCloud users data in the NextCloud root, create a folder for the data and set permissions.
+
+```
+mkdir /media/cloudstorage/clouddata
+chown nginx:nginx -R /media/cloudstorage/clouddata
+chcon -t httpd_sys_rw_content_t /media/cloudstorage/clouddata/ -R
+```
+
+Now navigate to your NextCloud server in the browser and complete Setup.
+
+## Post Install
+
+### Setup Email Notifications
+For example for password-resetting mails.
+
+Log into NextCloud with the administrator account and navigate to **Settings -> Basic**. Select the send mode `smtp` and fill out the details.
+
+Tell SELinux to allow nginx to send mail.
+
+```
+setsebool -P httpd_can_sendmail on
+```
+
+### Performance and Usability
+
+In `/etc/nginx/sites-available/nextcloud.conf` the maximum file size is already set to 512M. This can be further increased if needed.
+
+PHP also has to be configured accordingly. Set the line
+
+```
+upload_max_filesize = 2M
+```
+
+in `/etc/php.ini` to fit your nginx configuration and restart PHP-FPM.
+
+### Automating Certificate Renewal
+Edit root user's crontab file
+
+```
+crontab -e
+```
+
+Add the following line at the end of the file to run the Cron job daily. If the certificate is going to expire in 30 days, certbot will try to renew the certificate. It’s necessary to reload the Nginx service to pick up new certificate and key file.
+
+```
+@daily certbot renew --quiet && systemctl reload nginx
+```
+
+
+### Security
+
+### Last Checks if Everything is Setup
+Log into NextCloud with the administrator account and navigate to **Settings -> Overview**. Follow the instructions and tips.
+
+Go to **Settings -> Logging** and check for any errors.
+
+
 
 - deactivate default site (remove symlink or forbidden?)
+- performance and extensions
+  - https://docs.nextcloud.com/server/latest/admin_manual/installation/example_centos.html#manually-building-redis-imagick-optional
+- backup einrichten
 
 ## Table of References
 https://wiki.archlinux.org/index.php/Nextcloud and links
@@ -289,3 +445,13 @@ https://www.linuxbabe.com/redhat/install-lemp-nginx-mariadb-php7-rhel-8-centos-8
 https://packages.debian.org/de/stretch/nginx-full
 
 https://www.linuxbabe.com/redhat/install-nextcloud-rhel-8-centos-8-nginx-lemp
+
+https://docs.nextcloud.com/server/latest/admin_manual/installation/example_centos.html
+
+https://centosfaq.org/centos/yum-dnf-possible-confusion-centos-8/
+
+https://certbot.eff.org/lets-encrypt/centosrhel7-nginx.html
+
+https://stackoverflow.com/questions/26474222/mariadb-10-centos-7-moving-datadir-woes
+
+https://docs.nextcloud.com/server/18/admin_manual/installation/harden_server.html
