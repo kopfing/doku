@@ -37,6 +37,8 @@ yum module enable perl:5.26
 ```
 
 ### Nginx Web Server
+Nginx (pronounced "Engine X") is a high performance web server and reverse proxy server.
+
 Install and start the server.
 
 ```
@@ -110,7 +112,7 @@ mysql -u root -p
 
 ### PHP-FPM
 PHP is a widely-used scripting language especially suited for Web development and can be embedded into HTML.<br/>
-PHP-FPM is a FastCGI process manager.
+PHP-FPM is a FastCGI process manager which can manage an always running stack of PHP processes for faster execution of php scripts.
 
 Install PHP and related modules and start PHP-FPM
 
@@ -127,7 +129,7 @@ listen = /run/php-fpm/www.sock
 ```
 
 This indicates that PHP-FPM is listening on a Unix socket instead of a TCP/IP socket, which is good.<br/>
-Save and close the file, then open `/etc/php.ini` for editing and locate the settin `cgi.fix_pathinfo` which must be uncommented and set to `0`.
+Save and close the file, then open `/etc/php.ini` for editing and locate the setting `cgi.fix_pathinfo` which must be uncommented and set to `0`.
 
 Reload PHP-FPM for the changes to take effect.
 
@@ -391,7 +393,8 @@ setfacl -R -m u:nginx:rwx /var/lib/php/session/
 setfacl -R -m u:nginx:rwx /var/lib/php/wsdlcache/
 ```
 
-Don't change the owner of these files for possible future use of apache web server.
+Don't change the owner of these files for possible future use of apache web server.<br/>
+The ACLs for the directories can be checked with `getfacl`.
 
 ## Enable https
 
@@ -404,6 +407,19 @@ certbot --nginx
 ```
 
 Go through the script and restart nginx.
+
+### Automating Certificate Renewal
+Edit root user's crontab file
+
+```
+crontab -e
+```
+
+Add the following line at the end of the file to run the Cron job daily. If the certificate is going to expire in 30 days, certbot will try to renew the certificate. It’s necessary to reload the Nginx service to pick up new certificate and key file.
+
+```
+@daily certbot renew --quiet && systemctl reload nginx
+```
 
 ## Nextcloud Install Wizard
 
@@ -529,7 +545,7 @@ opcache.revalidate_freq=1
 
 Restart `php-pfm` and `nginx` services.
 
-#### Background Jobs
+### Background Jobs
 Nextcloud requires some tasks to be done on a regular basis. Cron is the most reliable method for doing that. 
 
 Set up a cron job for `nginx` user
@@ -548,22 +564,6 @@ to run the tasks every 5 minutes.
 
 Then make sure the method changes at the *Basic settings* admin page.
 
-### Tips
-To use the command occ: `sudo -u nginx php /usr/share/nginx/nextcloud/occ`. Add it to your aliases.
-
-### Automating Certificate Renewal
-Edit root user's crontab file
-
-```
-crontab -e
-```
-
-Add the following line at the end of the file to run the Cron job daily. If the certificate is going to expire in 30 days, certbot will try to renew the certificate. It’s necessary to reload the Nginx service to pick up new certificate and key file.
-
-```
-@daily certbot renew --quiet && systemctl reload nginx
-```
-
 ### Security
 
 ### Last Checks if Everything is Setup
@@ -574,6 +574,9 @@ Go to **Settings -> Logging** and check for any errors.
 Let Nextcloud scan your installation: https://scan.nextcloud.com/
 
 A more sophisticated scan can be done by Mozilla: https://observatory.mozilla.org/analyze
+
+## Tips
+To use the command occ: `sudo -u nginx php /usr/share/nginx/nextcloud/occ`. Add it to your aliases.
 
 # ToDo
 - backup einrichten
