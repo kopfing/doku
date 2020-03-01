@@ -4,6 +4,22 @@ Installation instructions as done on a clean headless VM with CentOS 8 installed
 
 All commands are execeuted as root.
 
+- [Prerequisites](#prerequisites)
+  - [Nginx Web Server](#nginx-web-server)
+  - [MariaDB Database Server](#mariadb-database-server)
+  - [PHP-FPM](#php-fpm)
+- [Download NextCloud](#download-nextcloud)
+- [Creata Database and User in MariaDB](#create-database-and-user-in-mariadb)
+- [Install and Enable PHP Modules](#install-and-enable-php-modules)
+- [Setting up Permissions](#setting-up-permissions)
+- [Enable https](#enable-https)
+- [Post Install](#post-install)
+  - [Setup Email Notifications](#setup-email-notifications)
+  - [Performance and Usability](#performance-and-usability)
+  - [Automating Certificate Renewal](#automating-certificate-renewal)
+  - [Security](#security)
+- [Table of References](#table-of-references)
+
 ## Prerequisites
 
 First install some dependencies needed during installation and in every day use situations.
@@ -48,7 +64,8 @@ mkdir /etc/nginx/sites-available
 mkdir /etc/nginx/sites-enabled
 ```
 
-and move the default server block from `/etc/nginx/nginx.conf` to `/etc/nginx/sites-available/default.conf`. Then to activate this design, the following has to be added to the `http` block in `/etc/nginx/nginx.conf`.
+and move the default server block from `/etc/nginx/nginx.conf` to `/etc/nginx/sites-available/default.conf`.<br/>
+Then to activate this design, the following has to be added to the `http` block in `/etc/nginx/nginx.conf`.
 
 ```
 # Load Virtual Host configs
@@ -92,7 +109,7 @@ mysql -u root -p
 ```
 
 ### PHP-FPM
-PHP is a widely-used scripting language especially suited for Web development and can be embedded into HTML.
+PHP is a widely-used scripting language especially suited for Web development and can be embedded into HTML.<br/>
 PHP-FPM is a FastCGI process manager.
 
 Install PHP and related modules and start PHP-FPM
@@ -102,16 +119,14 @@ dnf install -y php php-mysqlnd php-fpm php-opcache php-gd php-xml php-mbstring
 systemctl enable --now php-fpm
 ```
 
-Change the user and group setting in `/etc/php-fpm.d/www.conf` from apache to nginx.
-
+Change the user and group setting in `/etc/php-fpm.d/www.conf` from apache to nginx.<br/>
 Also in this file you can find the following line.
 
 ```
 listen = /run/php-fpm/www.sock
 ```
 
-This indicates that PHP-FPM is listening on a Unix socket instead of a TCP/IP socket, which is good.
-
+This indicates that PHP-FPM is listening on a Unix socket instead of a TCP/IP socket, which is good.<br/>
 Save and close the file, then open `/etc/php.ini` for editing and locate the settin `cgi.fix_pathinfo` which must be uncommented and set to `0`.
 
 Reload PHP-FPM for the changes to take effect.
@@ -122,7 +137,8 @@ systemctl reload php-fpm
 
 #### Test PHP
 
-By default, the Nginx package on CentOS 8 includes configurations for PHP-FPM (`/etc/nginx/conf.d/php-fpm.conf` and `/etc/nginx/default.d/php.conf`). To test PHP-FPM with Nginx Web server, we need to create a `info.php` file in the document root directory
+By default, the Nginx package on CentOS 8 includes configurations for PHP-FPM (`/etc/nginx/conf.d/php-fpm.conf` and `/etc/nginx/default.d/php.conf`).<br/>
+To test PHP-FPM with Nginx Web server, we need to create a `info.php` file in the document root directory
 
 ```
 vim /usr/share/nginx/html/info.php
@@ -382,7 +398,7 @@ chown nginx:nginx -R /media/cloudstorage/clouddata
 chcon -t httpd_sys_rw_content_t /media/cloudstorage/clouddata/ -R
 ```
 
-Now navigate to your NextCloud server in the browser and complete Setup.
+Navigate to your NextCloud server in the browser and complete Setup.
 
 ## Post Install
 
