@@ -8,16 +8,25 @@ All commands are execeuted as root.
   - [Nginx Web Server](#nginx-web-server)
   - [MariaDB Database Server](#mariadb-database-server)
   - [PHP-FPM](#php-fpm)
+    - [Test PHP](#test-php)
 - [Download Nextcloud](#download-nextcloud)
-- [Creata Database and User in MariaDB](#create-database-and-user-in-mariadb)
+- [Create a Database and User in MariaDB](#create-database-and-user-in-mariadb)
+- [Create a nginx Config File for Nextcloud](#create-database-and-user-in-mariadb)
 - [Install and Enable PHP Modules](#install-and-enable-php-modules)
 - [Setting up Permissions](#setting-up-permissions)
 - [Enable https](#enable-https)
+  - [Automating Certificate Renewal](#automating-certificate-renewal)
 - [Post Install](#post-install)
   - [Setup Email Notifications](#setup-email-notifications)
   - [Performance and Usability](#performance-and-usability)
-  - [Automating Certificate Renewal](#automating-certificate-renewal)
+    - [Maximum Upload Size](#maximum-upload-size)
+    - [Memory Caching](#memory-caching)
+    - [Tuning the Database](#tuning-the-database)
+    - [Tuning PHP](#tuning-php)
+  - [Background Jobs](#background-jobs)
   - [Security](#security)
+  - [Last Checks if Everthing is Setup](#last-checks-if-everything-is-setup)
+- [Tips](#tips)
 - [Table of References](#table-of-references)
 
 ## Prerequisites
@@ -35,6 +44,8 @@ Resolve dependency fail, this is only needed if the command `dnf list` shows "Mo
 dnf install -y perl
 yum module enable perl:5.26
 ```
+
+Now the LEMP stack will be installed.
 
 ### Nginx Web Server
 Nginx (pronounced "Engine X") is a high performance web server and reverse proxy server.
