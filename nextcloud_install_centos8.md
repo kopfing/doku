@@ -1,6 +1,6 @@
 # Install Nextcloud on LEMP Stack (CentOS 8, Nginx, MariaDB, PHP)
 
-Installation instructions as done on a clean headless VM with CentOS 8 installed.
+Installation instructions as tested for Nextcloud 18 on a headless VM with a clean CentOS 8 install.
 
 All commands are execeuted as root.
 
@@ -8,7 +8,7 @@ All commands are execeuted as root.
   - [Nginx Web Server](#nginx-web-server)
   - [MariaDB Database Server](#mariadb-database-server)
   - [PHP-FPM](#php-fpm)
-- [Download NextCloud](#download-nextcloud)
+- [Download Nextcloud](#download-nextcloud)
 - [Creata Database and User in MariaDB](#create-database-and-user-in-mariadb)
 - [Install and Enable PHP Modules](#install-and-enable-php-modules)
 - [Setting up Permissions](#setting-up-permissions)
@@ -158,9 +158,9 @@ sudo systemctl restart nginx php-fpm
 
 For security reasons, the `info.php` should be deleted again, however this info page will be helpful throughout the process of setting up nextcloud because the php modules can always be checked for availability. The "default" site will be deactivated at the end of this How-To.
 
-## Download NextCloud
+## Download Nextcloud
 
-Download the NextCloud archive to the server, it can be found under https://nextcloud.com/install/. Change the version number accordingly.
+Download the Nextcloud archive to the server, it can be found under https://nextcloud.com/install/. Change the version number accordingly.
 
 ```
 cd ~
@@ -193,7 +193,7 @@ flush privileges;
 
 Then logout from the DB server by pressing `Ctrl+D`.
 
-## Create a nginx Config File for NextCloud
+## Create a nginx Config File for Nextcloud
 
 ```
 vim /etc/nginx/sites-available/nextcloud.conf
@@ -334,7 +334,8 @@ dnf install -y ImageMagick ImageMagick-devel
 pecl install imagick
 ```
 
-Load the extension in the php.ini file with
+The extensions are loaded automatically by installing a config file into `/etc/php.d/`.<br/>
+Just imagick has to be loaded by adding following line to `/etc/php.ini`
 
 ```
 extension=imagick.so
@@ -348,6 +349,16 @@ setsebool -P httpd_execmem 1
 
 The option `-P` means that the setting should be permanent.
 
+To populate envirenment variable for php-fpm uncomment following lines in `/etc/php-fpm.d/www.conf`.
+
+```
+;env[HOSTNAME] = $HOSTNAME
+;env[PATH] = /usr/local/bin:/usr/bin:/bin
+;env[TMP] = /tmp
+;env[TMPDIR] = /tmp
+;env[TEMP] = /tmp
+```
+
 Reload PHP-FPM.
 
 ## Setting up Permissions
@@ -358,9 +369,17 @@ Tell SELinux to allow nginx and PHP-FPM to read and write to the nextcloud webro
 chcon -t httpd_sys_rw_content_t /usr/share/nginx/nextcloud -R
 ```
 
-Tell SELinux to allow nginx to make network requests to other server. This is needed to request TLS certificate status from Let's Encrypt CA server.
+Tell SELinux to allow nginx to make network requests to other server. This is needed to request TLS certificate status from Let's Encrypt CA server.<br/>
+Additionally make sure SELinux will not interfere with any operations needed for Nextcloud. If any executed installation step differs from this guide, see the official *SELinux configuration* guide by Nextcloud.
 
 ```
+semanage fcontext -a -t httpd_sys_rw_content_t '/usr/share/nginx/nextcloud/data(/.*)?'
+semanage fcontext -a -t httpd_sys_rw_content_t '/usr/share/nginx/nextcloud/config(/.*)?'
+semanage fcontext -a -t httpd_sys_rw_content_t '/usr/share/nginx/nextcloud/apps(/.*)?'
+semanage fcontext -a -t httpd_sys_rw_content_t '/usr/share/nginx/nextcloud/.htaccess'
+semanage fcontext -a -t httpd_sys_rw_content_t '/usr/share/nginx/nextcloud/.user.ini'
+semanage fcontext -a -t httpd_sys_rw_content_t '/usr/share/nginx/nextcloud/3rdparty/aws/aws-sdk-php/src/data/logs(/.*)?'
+restorecon -R '/usr/share/nginx/nextcloud'
 setsebool -P httpd_can_network_connect 1
 ```
 
@@ -386,11 +405,11 @@ certbot --nginx
 
 Go through the script and restart nginx.
 
-## NextCloud Install Wizard
+## Nextcloud Install Wizard
 
 Now the install wizard is accessible using https.
 
-Because it is unsafe to store NextCloud users data in the NextCloud root, create a folder for the data and set permissions.
+Because it is unsafe to store Nextcloud users data in the Nextcloud root, create a folder for the data and set permissions.
 
 ```
 mkdir /media/cloudstorage/clouddata
@@ -398,14 +417,14 @@ chown nginx:nginx -R /media/cloudstorage/clouddata
 chcon -t httpd_sys_rw_content_t /media/cloudstorage/clouddata/ -R
 ```
 
-Navigate to your NextCloud server in the browser and complete Setup.
+Navigate to your Nextcloud server in the browser and complete Setup.
 
 ## Post Install
 
 ### Setup Email Notifications
 For example for password-resetting mails.
 
-Log into NextCloud with the administrator account and navigate to **Settings -> Basic**. Select the send mode `smtp` and fill out the details.
+Log into Nextcloud with the administrator account and navigate to **Settings -> Basic**. Select the send mode `smtp` and fill out the details.
 
 Tell SELinux to allow nginx to send mail.
 
@@ -415,15 +434,122 @@ setsebool -P httpd_can_sendmail on
 
 ### Performance and Usability
 
+#### Maximum Upload Size
 In `/etc/nginx/sites-available/nextcloud.conf` the maximum file size is already set to 512M. This can be further increased if needed.
 
-PHP also has to be configured accordingly. Set the line
+PHP also has to be configured accordingly. Set the lines
 
 ```
-upload_max_filesize = 2M
+upload_max_filesize
+post_max_size
 ```
 
 in `/etc/php.ini` to fit your nginx configuration and restart PHP-FPM.
+
+#### Memory Caching
+PHP opcache, which stores compiled PHP scripts in memory is already installed with the extension `php-opcache`
+To significantly improve the server performance enable local and distributed data caching as well as transactional file locking by installing and enabling `APCu` and `Redis`.
+
+Manually build Redis
+
+```
+pecl install redis
+```
+
+Create a new ini file to make sure, the extension is loaded after the json extension
+
+```
+vim /etc/php.d/99-redis.ini
+```
+
+and add the following line.
+
+```
+extension=redis.so
+```
+
+Install and start the Redis service and configure the firewall.
+
+```
+dnf install -y redis
+systemctl enable --now redis
+firewall-cmd --permanent --add-service=redis
+firewall-cmd --reload
+```
+
+APCu is already installed, so now both extensions must be enabled by adding following lines to<br/>
+`/usr/share/nginx/nextcloud/config/config.php`
+
+```
+'memcache.local' => '\OC\Memcache\APCu',
+'memcache.locking' => '\OC\Memcache\Redis',
+'memcache.distributed' => '\OC\Memcache\Redis',
+'redis' => [
+    'host' => '127.0.0.1',
+    'port' => 6379,
+],
+```
+
+#### Tuning the Database
+For normal databases smaller than 1GB set the following in the `[mysqld]` section of `/etc/my.cnf.d/mariadb-server.cnf`.
+
+```
+innodb_buffer_pool_size=1G
+innodb_io_capacity=4000
+```
+
+Restart MariaDB and check if there is still sufficient free RAM, so that the system does not start to use the swap partition when it receives a burst of request.
+
+#### Tuning PHP
+
+Set the `memory_limit` in `/etc/php.ini` to at least 512M.
+
+##### PHP-FPM
+For example on a machine with 4G of RAM and 1G of MySQL cache configure following values in the `www.conf`.
+
+```
+pm = dynamic
+pm.max_children = 120
+pm.start_servers = 12
+pm.min_spare_servers = 6
+pm.max_spare_servers = 18
+```
+
+##### PHP OPCache
+In `/etc/php.d/10-opcache.ini` set at least the following settings.
+
+```
+opcache.enable=1
+opcache.interned_strings_buffer=8
+opcache.max_accelerated_files=10000
+opcache.memory_consumption=128
+opcache.save_comments=1
+opcache.revalidate_freq=1
+```
+
+Restart `php-pfm` and `nginx` services.
+
+#### Background Jobs
+Nextcloud requires some tasks to be done on a regular basis. Cron is the most reliable method for doing that. 
+
+Set up a cron job for `nginx` user
+
+```
+crontab -u nginx -e
+```
+
+and append this line
+
+```
+*/5 * * * * php -f /usr/share/nginx/nextcloud/cron.php
+```
+
+to run the tasks every 5 minutes.
+
+Then make sure the method changes at the *Basic settings* admin page.
+
+### Tips
+To use the command occ: `sudo -u nginx php /usr/share/nginx/nextcloud/occ`. Add it to your aliases.
 
 ### Automating Certificate Renewal
 Edit root user's crontab file
@@ -438,20 +564,24 @@ Add the following line at the end of the file to run the Cron job daily. If the 
 @daily certbot renew --quiet && systemctl reload nginx
 ```
 
-
 ### Security
 
 ### Last Checks if Everything is Setup
-Log into NextCloud with the administrator account and navigate to **Settings -> Overview**. Follow the instructions and tips.
+Log into Nextcloud with the administrator account and navigate to **Settings -> Overview**. Follow the instructions and tips if there are any errors/warnings.
 
 Go to **Settings -> Logging** and check for any errors.
 
+Let Nextcloud scan your installation: https://scan.nextcloud.com/
 
+A more sophisticated scan can be done by Mozilla: https://observatory.mozilla.org/analyze
 
-- deactivate default site (remove symlink or forbidden?)
-- performance and extensions
-  - https://docs.nextcloud.com/server/latest/admin_manual/installation/example_centos.html#manually-building-redis-imagick-optional
+# ToDo
 - backup einrichten
+- upload data
+- deactivate default site (remove symlink or forbidden?)
+- nicht in guide aufnehmen
+  - https://observatory.mozilla.org/analyze
+  - https://scan.nextcloud.com/
 
 ## Table of References
 https://wiki.archlinux.org/index.php/Nextcloud and links
@@ -462,7 +592,7 @@ https://packages.debian.org/de/stretch/nginx-full
 
 https://www.linuxbabe.com/redhat/install-nextcloud-rhel-8-centos-8-nginx-lemp
 
-https://docs.nextcloud.com/server/latest/admin_manual/installation/example_centos.html
+https://docs.nextcloud.com/server/18/admin_manual/installation/example_centos.html
 
 https://centosfaq.org/centos/yum-dnf-possible-confusion-centos-8/
 
@@ -471,3 +601,7 @@ https://certbot.eff.org/lets-encrypt/centosrhel7-nginx.html
 https://stackoverflow.com/questions/26474222/mariadb-10-centos-7-moving-datadir-woes
 
 https://docs.nextcloud.com/server/18/admin_manual/installation/harden_server.html
+
+https://docs.nextcloud.com/server/18/admin_manual/configuration_server/caching_configuration.html
+
+https://docs.nextcloud.com/server/18/admin_manual/installation/server_tuning.html
