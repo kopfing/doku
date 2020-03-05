@@ -1,4 +1,4 @@
-# Install Nextcloud on LEMP Stack (CentOS 8, Nginx, MariaDB, PHP)
+# Nextcloud on LEMP Stack (CentOS 8, Nginx, MariaDB, PHP)
 
 Installation instructions as tested for Nextcloud 18 on a headless VM with a clean CentOS 8 install.
 
@@ -16,6 +16,7 @@ All commands are execeuted as root.
 - [Setting up Permissions](#setting-up-permissions)
 - [Enable https](#enable-https)
   - [Automating Certificate Renewal](#automating-certificate-renewal)
+- [Nextcloud Install Wizard](#nextcloud-install-wizard)
 - [Post Install](#post-install)
   - [Setup Email Notifications](#setup-email-notifications)
   - [Performance and Usability](#performance-and-usability)
@@ -34,7 +35,7 @@ All commands are execeuted as root.
 First install some dependencies needed during installation and in every day use situations.
 
 ```
-dnf install -y epel-release yum-utils unzip curl wget bash-completion policycoreutils-python-utils mlocate bzip2
+dnf install -y epel-release yum-utils unzip curl wget bash-completion policycoreutils-python-utils mlocate bzip2 git
 dnf update -y
 ```
 
@@ -426,7 +427,7 @@ Edit root user's crontab file
 crontab -e
 ```
 
-Add the following line at the end of the file to run the Cron job daily. If the certificate is going to expire in 30 days, certbot will try to renew the certificate. It’s necessary to reload the Nginx service to pick up new certificate and key file.
+Add the following line at the end of the file to run the cron job daily. If the certificate is going to expire in 30 days, certbot will try to renew the certificate. It’s necessary to reload the Nginx service to pick up new certificate and key file.
 
 ```
 @daily certbot renew --quiet && systemctl reload nginx
@@ -456,7 +457,7 @@ Log into Nextcloud with the administrator account and navigate to **Settings -> 
 Tell SELinux to allow nginx to send mail.
 
 ```
-setsebool -P httpd_can_sendmail on
+setsebool -P httpd_can_sendmail 1
 ```
 
 ### Performance and Usability
@@ -495,13 +496,31 @@ and add the following line.
 extension=redis.so
 ```
 
-Install and start the Redis service and configure the firewall.
+Install and start the Redis service.
 
 ```
 dnf install -y redis
 systemctl enable --now redis
-firewall-cmd --permanent --add-service=redis
-firewall-cmd --reload
+```
+
+To make Redis listen on a Unix socket instead of a TCP socket, open `/etc/redis.conf` and configure following attributes.
+
+```
+port 0
+unixsocket /var/run/redis/redis.sock
+unixsocketperm 770
+```
+
+Add the user *nginx* to the group *redis*.
+
+```
+gpasswd -a nginx redis
+```
+
+Tell SELinux to allow deamons to enable cluster mode.
+
+```
+setsebool -P daemons_enable_cluster_mode 1
 ```
 
 APCu is already installed, so now both extensions must be enabled by adding following lines to<br/>
@@ -512,8 +531,8 @@ APCu is already installed, so now both extensions must be enabled by adding foll
 'memcache.locking' => '\OC\Memcache\Redis',
 'memcache.distributed' => '\OC\Memcache\Redis',
 'redis' => [
-    'host' => '127.0.0.1',
-    'port' => 6379,
+    'host' => '/var/run/redis/redis.sock',
+    'port' => 0,
 ],
 ```
 
@@ -576,6 +595,20 @@ to run the tasks every 5 minutes.
 Then make sure the method changes at the *Basic settings* admin page.
 
 ### Security
+Since a Firewall and SELinux are active on the host running Nextcloud, only one further measure will be taken securitywise for now.
+
+#### Deactivate nginx Default Site
+To deactivate accessing any information about the system by making a request to the server IP, first deactivate the default site by removing the symlink to `default.conf` from the `sites-enabled` folder.<br/>
+Then create a config file in `sites-available` and link it to `sites-enabled`. The files contents are:
+
+```
+server {
+    listen 80;
+    server_name "";
+    return 444;
+}
+```
+
 
 ### Last Checks if Everything is Setup
 Log into Nextcloud with the administrator account and navigate to **Settings -> Overview**. Follow the instructions and tips if there are any errors/warnings.
@@ -586,19 +619,32 @@ Let Nextcloud scan your installation: https://scan.nextcloud.com/
 
 A more sophisticated scan can be done by Mozilla: https://observatory.mozilla.org/analyze
 
+### Automated Backup
+
+Download or clone the repository with backup and restore scripts perfectly suited for this setup from<br/>
+`https://codeberg.org/DecaTec/Nextcloud-Backup-Restore`
+
+Open `NextcloudBackup.sh` in your text editor and customize all values which are marked with *TODO*.
+
+After testing the script and with the Nextcloud instance still functional, create a cron job for the user root. Following line will run the backup script every Sunday at 02:00.
+
+```
+0 2 * * 0 /root/NextcloudBackupRestore/NextcloudBackup.sh
+```
+
+
 ## Tips
 To use the command occ: `sudo -u nginx php /usr/share/nginx/nextcloud/occ`. Add it to your aliases.
 
 # ToDo
-- backup einrichten
-- upload data
 - deactivate default site (remove symlink or forbidden?)
-- nicht in guide aufnehmen
-  - https://observatory.mozilla.org/analyze
-  - https://scan.nextcloud.com/
+- snapshot
+- cleanup cloudstorage
 
 ## Table of References
 https://wiki.archlinux.org/index.php/Nextcloud and links
+
+https://docs.nextcloud.com/server/18/admin_manual/contents.html and links
 
 https://www.linuxbabe.com/redhat/install-lemp-nginx-mariadb-php7-rhel-8-centos-8
 
@@ -606,16 +652,10 @@ https://packages.debian.org/de/stretch/nginx-full
 
 https://www.linuxbabe.com/redhat/install-nextcloud-rhel-8-centos-8-nginx-lemp
 
-https://docs.nextcloud.com/server/18/admin_manual/installation/example_centos.html
-
 https://centosfaq.org/centos/yum-dnf-possible-confusion-centos-8/
 
 https://certbot.eff.org/lets-encrypt/centosrhel7-nginx.html
 
 https://stackoverflow.com/questions/26474222/mariadb-10-centos-7-moving-datadir-woes
 
-https://docs.nextcloud.com/server/18/admin_manual/installation/harden_server.html
-
-https://docs.nextcloud.com/server/18/admin_manual/configuration_server/caching_configuration.html
-
-https://docs.nextcloud.com/server/18/admin_manual/installation/server_tuning.html
+https://decatec.de/home-server/nextcloud-auf-ubuntu-server-18-04-lts-mit-nginx-mariadb-php-lets-encrypt-redis-und-fail2ban
