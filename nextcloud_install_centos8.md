@@ -636,11 +636,6 @@ After testing the script and with the Nextcloud instance still functional, creat
 ## Tips
 To use the command occ: `sudo -u nginx php /usr/share/nginx/nextcloud/occ`. Add it to your aliases.
 
-# ToDo
-- deactivate default site (remove symlink or forbidden?)
-- snapshot
-- cleanup cloudstorage
-
 ## Table of References
 https://wiki.archlinux.org/index.php/Nextcloud and links
 
